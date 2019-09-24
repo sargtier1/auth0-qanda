@@ -1,27 +1,34 @@
 //import dependencies
-const express = require('express');
-const bodyParser = require('body-parser');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
+const express = require('express')
+const bodyParser = require('body-parser')
+const cors = require('cors')
+const helmet = require('helmet')
+const morgan = require('morgan')
+const jwt = require('express-jwt')
+const jwksRsa = require('jwks-rsa')
+
+require('dotenv').config()
+
+const domain = process.env.AUTH0_DOMAIN
+const clientId = process.env.AUTH0_CLIENTID
 
 // define the Express app
-const app = express();
+const app = express()
 
 // the database
-const questions = [];
+const questions = []
 
 // enhance your app security with Helmet
-app.use(helmet());
+app.use(helmet())
 
 // use bodyParser to parse application/json content-type
-app.use(bodyParser.json());
+app.use(bodyParser.json())
 
 // enable all CORS requests
-app.use(cors());
+app.use(cors())
 
 // log HTTP requests
-app.use(morgan('combined'));
+app.use(morgan('combined'))
 
 // retrieve all questions
 app.get('/', (req, res) => {
@@ -29,48 +36,64 @@ app.get('/', (req, res) => {
     id: q.id,
     title: q.title,
     description: q.description,
-    answers: q.answers.length,
-  }));
-  res.send(qs);
-});
+    answers: q.answers.length
+  }))
+  res.send(qs)
+})
 
 // get a specific question
 app.get('/:id', (req, res) => {
-  const question = questions.filter(q => (q.id === parseInt(req.params.id)));
-  if (question.length > 1) return res.status(500).send();
-  if (question.length === 0) return res.status(404).send();
-  res.send(question[0]);
-});
+  const question = questions.filter(q => q.id === parseInt(req.params.id))
+  if (question.length > 1) return res.status(500).send()
+  if (question.length === 0) return res.status(404).send()
+  res.send(question[0])
+})
+
+const checkJwt = jwt({
+  secret: jwksRsa.expressJwtSecret({
+    cache: true,
+    rateLimit: true,
+    jwksRequestsPerMinute: 5,
+    jwksUri: `https://dev-1g1-m520.auth0.com/.well-known/jwks.json`
+  }),
+
+  audience: 'e9xAbwyHvTv3vOsYvLix5ZxBTb8jE27F',
+  // below needs to be removed to post to secured route
+  // issuer: `https://dev-1g1-m520.auth0.com`,
+  algorithms: ['RS256']
+})
 
 // insert a new question
-app.post('/', (req, res) => {
-  const {title, description} = req.body;
+app.post('/', checkJwt, (req, res) => {
+  const { title, description } = req.body
   const newQuestion = {
     id: questions.length + 1,
     title,
     description,
     answers: [],
-  };
-  questions.push(newQuestion);
-  res.status(200).send();
-});
+    author: req.user.name
+  }
+  questions.push(newQuestion)
+  res.status(200).send()
+})
 
 // insert a new answer to a question
-app.post('/answer/:id', (req, res) => {
-  const {answer} = req.body;
+app.post('/answer/:id', checkJwt, (req, res) => {
+  const { answer } = req.body
 
-  const question = questions.filter(q => (q.id === parseInt(req.params.id)));
-  if (question.length > 1) return res.status(500).send();
-  if (question.length === 0) return res.status(404).send();
+  const question = questions.filter(q => q.id === parseInt(req.params.id))
+  if (question.length > 1) return res.status(500).send()
+  if (question.length === 0) return res.status(404).send()
 
   question[0].answers.push({
     answer,
-  });
+    author: req.user.name
+  })
 
-  res.status(200).send();
-});
+  res.status(200).send()
+})
 
 // start the server
 app.listen(8081, () => {
-  console.log('listening on port 8081');
-});
+  console.log('listening on port 8081')
+})
